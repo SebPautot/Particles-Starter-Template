@@ -1,0 +1,21 @@
+[submodule "tooling"]
+	path = tooling
+	url = https://github.com/CoolLibs/tooling
+[submodule "CMakeUtils"]
+	path = CMakeUtils
+	url = https://github.com/CoolLibs/CMakeUtils
+[submodule "lib/glfw"]
+	path = lib/glfw
+	url = https://github.com/glfw/glfw
+[submodule "lib/exe_path"]
+	path = lib/exe_path
+	url = https://github.com/CoolLibs/exe_path
+[submodule "lib/glm"]
+	path = lib/glm
+	url = https://github.com/CoolLibs/glm
+[submodule "lib/tinyobjloader"]
+	path = lib/tinyobjloader
+	url = https://github.com/tinyobjloader/tinyobjloader
+[submodule "lib/img"]
+	path = lib/img
+	url = https://github.com/CoolLibs/img
