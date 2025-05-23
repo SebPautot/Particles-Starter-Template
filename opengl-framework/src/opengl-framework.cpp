@@ -271,6 +271,17 @@ auto delta_time_in_seconds() -> float
     return context().delta_time;
 }
 
+auto mouse_position() -> glm::vec2
+{
+    double x{};
+    double y{};
+    glfwGetCursorPos(context().window, &x, &y);
+    return glm::vec2{
+        (static_cast<float>(x) - static_cast<float>(gl::window_width_in_screen_coordinates()) / 2.f) / static_cast<float>(gl::window_height_in_screen_coordinates()) * 2.f,
+        static_cast<float>(y) / static_cast<float>(gl::window_height_in_screen_coordinates()) * -2.f + 1.f,
+    };
+}
+
 static auto default_shader() -> Shader&
 {
     static auto instance = Shader{{

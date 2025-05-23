@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(TPs-Rendering)
+project(Particles)
 
 file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS src/*)
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})

@@ -1,13 +1,21 @@
-#include "opengl-framework/opengl-framework.hpp" // Inclue la librairie qui va nous servir à faire du rendu
+#include "opengl-framework/opengl-framework.hpp"
+#include "utils.hpp"
 
 int main()
 {
-    // Initialisation
-    gl::init("TPs de Rendering"); // On crée une fenêtre et on choisit son nom
-    gl::maximize_window(); // On peut la maximiser si on veut
+    gl::init("Particules!");
+    gl::maximize_window();
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+    // TODO: create an array of particles
 
     while (gl::window_is_open())
     {
-        // Rendu à chaque frame
+        glClearColor(0.f, 0.f, 0.f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        // TODO update particles
+        // TODO render particles
     }
 }

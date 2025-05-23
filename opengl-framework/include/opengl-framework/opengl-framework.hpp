@@ -34,6 +34,8 @@ auto window_aspect_ratio() -> float;
 auto time_in_seconds() -> float;
 auto delta_time_in_seconds() -> float;
 
+auto mouse_position() -> glm::vec2;
+
 void bind_default_shader();
 auto sphere_vertices();
 
