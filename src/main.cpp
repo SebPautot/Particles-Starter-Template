@@ -26,8 +26,6 @@ struct GameObjectComponent
     virtual void render()
     {
     }
-
-    
 };
 
 struct GameObject
@@ -36,12 +34,12 @@ struct GameObject
     float size = 1.f;
     float rotation = 0.f;
 
-    std::vector<GameObjectComponent*> components = std::vector<GameObjectComponent*>();
+    std::vector<GameObjectComponent *> components = std::vector<GameObjectComponent *>();
     void _go_start()
     {
         start();
 
-        for (GameObjectComponent* component : components)
+        for (GameObjectComponent *component : components)
         {
             component->start();
         }
@@ -55,7 +53,7 @@ struct GameObject
     {
         physics_process(delta);
 
-        for (GameObjectComponent* component : components)
+        for (GameObjectComponent *component : components)
         {
             component->physics_process(delta);
         }
@@ -79,10 +77,11 @@ struct GameObject
     {
     }
 
-    void _go_render(){
+    void _go_render()
+    {
         render();
 
-        for (GameObjectComponent* component : components)
+        for (GameObjectComponent *component : components)
         {
             component->render();
         }
@@ -90,7 +89,6 @@ struct GameObject
 
     virtual void render()
     {
-        
     }
 };
 
@@ -194,32 +192,11 @@ struct SphereRenderer : GameObjectComponent
     }
 };
 
+struct Particle; // Forward declaration
+
 struct SphereCollider : GameObjectComponent
 {
     glm::vec2 previous_pos = glm::vec2(0, 0);
-
-    void physics_process(float delta) override
-    {
-        glm::vec2 old_to_new_vec = object->position - previous_pos;
-
-
-        //
-        glm::vec2 screen_pos = object->position;
-        screen_pos += glm::vec2(0.5, 0.5);
-        screen_pos.x /= gl::window_width_in_screen_coordinates();
-        screen_pos.y /= gl::window_height_in_screen_coordinates();
-
-        glm::vec2 screen_pos2 = previous_pos;
-        screen_pos2 += glm::vec2(0.5, 0.5);
-        screen_pos2.x /= gl::window_width_in_screen_coordinates();
-        screen_pos2.y /= gl::window_height_in_screen_coordinates();
-
-        utils::draw_line(screen_pos2, screen_pos, 0.01f, glm::vec4(0, 1, 0, 1));
-        //
-
-
-        previous_pos = object->position;
-    }
 
     glm::vec2 intersection(glm::vec2 a_origin, glm::vec2 a_dir, glm::vec2 b_origin, glm::vec2 b_dir)
     {
@@ -232,6 +209,8 @@ struct SphereCollider : GameObjectComponent
         }
         return result;
     }
+
+    void physics_process(float delta) override;
 };
 
 struct Particle : GameObject
@@ -243,8 +222,8 @@ struct Particle : GameObject
     float life_time = -1.f;
     float age = 0.f;
 
-    RigidBody* rb =new RigidBody();
-    SphereRenderer* rend = new SphereRenderer();
+    RigidBody *rb = new RigidBody();
+    SphereRenderer *rend = new SphereRenderer();
     SphereCollider *collider = new SphereCollider();
 
     virtual void start() override
@@ -297,12 +276,48 @@ struct Particle : GameObject
         }
     }
 
-
     float lerp(float start, float end, float t)
     {
         return (end - start) * t + start;
     }
 };
+
+void SphereCollider::physics_process(float delta)
+{
+
+    glm::vec2 old_to_new_vec = object->position - previous_pos;
+
+    //
+    glm::vec2 screen_pos = glm::vec2(100, -100);
+    screen_pos += glm::vec2(0.5, 0.5);
+    screen_pos.x /= gl::window_width_in_screen_coordinates();
+    screen_pos.y /= gl::window_height_in_screen_coordinates();
+
+    glm::vec2 screen_pos2 = glm::vec2(-100, -100);
+    screen_pos2 += glm::vec2(0.5, 0.5);
+    screen_pos2.x /= gl::window_width_in_screen_coordinates();
+    screen_pos2.y /= gl::window_height_in_screen_coordinates();
+
+    utils::draw_line(screen_pos2, screen_pos, 0.01f, glm::vec4(0, 1, 0, 1));
+
+    //
+    if (old_to_new_vec.x == 0 && old_to_new_vec.y == 0)
+    {
+        return; // no movement
+    }
+
+    glm::vec2 intersec = intersection(glm::vec2(-100, -100), glm::vec2(0, 200), previous_pos, old_to_new_vec);
+
+    if (intersec.x > 0)
+    {
+        glm::vec2 normal = glm::normalize(glm::vec2(glm::vec2(-200, 0)));
+
+        Particle *p = (Particle *)object;
+        p->rb->linear_velocity = glm::reflect(old_to_new_vec, normal);
+    }
+
+    previous_pos = object->position;
+}
 
 int main()
 {
@@ -313,7 +328,6 @@ int main()
 
     // TODO: create an array of particles
     std::vector<Particle> particles = std::vector<Particle>(1000);
-
 
     for (Particle &particle : particles)
     {
@@ -346,6 +360,4 @@ int main()
             toLog = "";
         }
     }
-
-    
 }
