@@ -5,6 +5,18 @@
 
 std::string toLog = "";
 
+glm::vec2 random_point_in_vector(glm::vec2 bounds)
+{
+    return glm::vec2(bounds.x * utils::rand(0.f, 1.f), bounds.y * utils::rand(0.f, 1.f));
+}
+
+glm::vec2 random_point_in_circle(float radius = 1.f)
+{
+    float length = sqrt(utils::rand(0.f, 1.f)) * radius;
+    float angle = utils::rand(0.f, 2.f * 3.14f);
+    return glm::vec2(cos(angle), sin(angle)) * length;
+}
+
 struct GameObject;
 
 struct GameObjectComponent
@@ -185,9 +197,9 @@ struct SphereRenderer : GameObjectComponent
     virtual void render() override
     {
         glm::vec2 screen_pos = object->position;
-        screen_pos += glm::vec2(0.5, 0.5);
-        screen_pos.x /= gl::window_width_in_screen_coordinates();
-        screen_pos.y /= gl::window_height_in_screen_coordinates();
+        // screen_pos += glm::vec2(0.5, 0.5);
+        // screen_pos.x /= gl::window_width_in_screen_coordinates();
+        // screen_pos.y /= gl::window_height_in_screen_coordinates();
         utils::draw_disk(screen_pos, object->size / (2 * gl::window_width_in_screen_coordinates()), color);
     }
 };
@@ -237,21 +249,25 @@ struct Particle : GameObject
         components.push_back(rend);
         components.push_back(collider);
 
-        position.x = utils::rand(-1, 1) * (gl::window_width_in_screen_coordinates());
-        position.y = utils::rand(-1, 1) * (gl::window_height_in_screen_coordinates());
+        
+
+        position = random_point_in_circle(1.f);
+        // position = random_point_in_vector(glm::vec2(2.f, 2.f)) - glm::vec2(1.f, 1.f);
+        // position.x = position.x * (gl::window_width_in_screen_coordinates());
+        // position.y = position.y * (gl::window_height_in_screen_coordinates());
         start_size = 100.f;
         end_size = 50.f;
         start_color = glm::vec4(1.f, 1.f, 1.f, 1.f);
         end_color = glm::vec4(1.f, 1.f, 1.f, 0.5f);
-        rb->mass = 100.f;
-        rb->add_force(glm::vec2(utils::rand(-10, 10) * (gl::window_width_in_screen_coordinates() / 2), utils::rand(-10, 10) * (gl::window_height_in_screen_coordinates() / 2)));
+        rb->mass = 0.f;
+        // rb->add_force(glm::vec2(utils::rand(-10, 10) * (gl::window_width_in_screen_coordinates() / 2), utils::rand(-10, 10) * (gl::window_height_in_screen_coordinates() / 2)));
         life_time = utils::rand(0, 100);
     }
 
     virtual void physics_process(float delta) override
     {
-        rb->add_acceleration(glm::vec2(0, -9.80));
-        rb->add_force(rb->get_friction_force(0.0000181f, size));
+        // rb->add_acceleration(glm::vec2(0, -9.80));
+        // rb->add_force(rb->get_friction_force(0.0000181f, size));
 
         if (life_time < 0)
         {
@@ -313,7 +329,7 @@ void SphereCollider::physics_process(float delta)
         glm::vec2 normal = glm::normalize(glm::vec2(glm::vec2(-200, 0)));
 
         Particle *p = (Particle *)object;
-        p->rb->linear_velocity = glm::reflect(old_to_new_vec, normal);
+        // p->rb->linear_velocity = glm::reflect(old_to_new_vec, normal);
     }
 
     previous_pos = object->position;
