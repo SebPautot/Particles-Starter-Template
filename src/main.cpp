@@ -198,8 +198,8 @@ struct SphereRenderer : GameObjectComponent
     {
         glm::vec2 screen_pos = object->position;
         // screen_pos += glm::vec2(0.5, 0.5);
-        // screen_pos.x /= gl::window_width_in_screen_coordinates();
-        // screen_pos.y /= gl::window_height_in_screen_coordinates();
+        screen_pos.x /= 1000;
+        screen_pos.y /= 1000;
         utils::draw_disk(screen_pos, object->size / (2 * gl::window_width_in_screen_coordinates()), color);
     }
 };
@@ -251,7 +251,7 @@ struct Particle : GameObject
 
         
 
-        position = random_point_in_circle(1.f);
+        position = random_point_in_circle(100.f);
         // position = random_point_in_vector(glm::vec2(2.f, 2.f)) - glm::vec2(1.f, 1.f);
         // position.x = position.x * (gl::window_width_in_screen_coordinates());
         // position.y = position.y * (gl::window_height_in_screen_coordinates());
@@ -259,15 +259,17 @@ struct Particle : GameObject
         end_size = 50.f;
         start_color = glm::vec4(1.f, 1.f, 1.f, 1.f);
         end_color = glm::vec4(1.f, 1.f, 1.f, 0.5f);
-        rb->mass = 0.f;
-        // rb->add_force(glm::vec2(utils::rand(-10, 10) * (gl::window_width_in_screen_coordinates() / 2), utils::rand(-10, 10) * (gl::window_height_in_screen_coordinates() / 2)));
+        rb->mass = 1000.f;
+        rb->add_force(random_point_in_circle(1000000.f));
         life_time = utils::rand(0, 100);
     }
 
     virtual void physics_process(float delta) override
     {
-        // rb->add_acceleration(glm::vec2(0, -9.80));
-        // rb->add_force(rb->get_friction_force(0.0000181f, size));
+        rb->add_acceleration(glm::vec2(0, -9.80));
+        rb->add_force(rb->get_friction_force(0.0000181f, size));
+
+        // rb->add_force(random_point_in_circle(100.f));
 
         if (life_time < 0)
         {
