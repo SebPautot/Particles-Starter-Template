@@ -316,21 +316,18 @@ struct Particle : GameObject
     float life_time = -1.f;
     float age = 0.f;
 
-    RigidBody *rb = nullptr;
-    SphereRenderer *rend = nullptr;
-    SphereCollider *collider = nullptr;
+    RigidBody *rb = new RigidBody();
+    SphereRenderer *rend = new SphereRenderer();
+    SphereCollider *collider = new SphereCollider();
 
     Particle()
     {
-        rb = new RigidBody();
         rb->object = this;
         components.push_back(rb);
 
-        rend = new SphereRenderer();
         rend->object = this;
         components.push_back(rend);
 
-        collider = new SphereCollider();
         collider->object = this;
         components.push_back(collider);
     }
@@ -342,9 +339,9 @@ struct Particle : GameObject
         end_size = 10.f;
         start_color = glm::vec4(0.f, 0.f, 0.f, 0.f);
         end_color = glm::vec4(1.f, 0.f, 0.f, 0.5f);
-        rb->mass = 1000.f;
+        rb->mass = 100.f;
         // rb->add_force(random_point_in_circle(1000000.f));
-        life_time = utils::rand(0, 60 * (1- deltaTime));
+        life_time = utils::rand(0, 10 * (1 - deltaTime));
     }
 
     virtual void physics_process(float delta) override
@@ -371,11 +368,7 @@ struct Particle : GameObject
         {
             float coef = age / life_time;
             size = lerp(start_size, end_size, coef);
-            rend->color = glm::vec4(
-                lerp(start_color.x, end_color.x, coef),
-                lerp(start_color.y, end_color.y, coef),
-                lerp(start_color.z, end_color.z, coef),
-                lerp(start_color.w, end_color.w, coef));
+            rend->color = lerp(start_color, end_color, coef);
         }
     }
 };
@@ -384,10 +377,18 @@ struct Curve : GameObject
 {
     std::function<glm::vec2(float)> function;
     ParametricFunctionRenderer *renderer;
-    float attraction_radius = 0.1f;
-    float attraction_strength = 1000.f;
+    float attraction_radius = 100.f;
+    float attraction_strength = -1000.f;
 
     Curve(std::function<glm::vec2(float)> func)
+    {
+        function = func;
+        renderer = new ParametricFunctionRenderer(this, function);
+        renderer->object = this;
+        components.push_back(renderer);
+    }
+
+    Curve(std::function<glm::vec2(float)> func, float attraction_strength, float attraction_radius)
     {
         function = func;
         renderer = new ParametricFunctionRenderer(this, function);
@@ -406,7 +407,7 @@ struct Curve : GameObject
 
         for (GameObject *particle : objects)
         {
-            //cast to Particle
+            // cast to Particle
             Particle *p = dynamic_cast<Particle *>(particle);
 
             if (p == nullptr)
@@ -427,16 +428,16 @@ struct Curve : GameObject
 
         // Use Newton's method to find the closest point on the curve
         // Initial guess: brute force to find a good starting t
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < 50; i++)
         {
-            float t = i / 100.f;
+            float t = i / 50.f;
             glm::vec2 curve_point = function(t);
             float distance = glm::distance(point, curve_point);
 
             if (distance < closest_distance)
             {
-            closest_distance = distance;
-            closest_t = t;
+                closest_distance = distance;
+                closest_t = t;
             }
         }
 
@@ -450,7 +451,7 @@ struct Curve : GameObject
             glm::vec2 p1 = function(t + h);
             glm::vec2 p_1 = function(t - h);
 
-            glm::vec2 d1 = (p1 - p_1) / (2 * h); // first derivative
+            glm::vec2 d1 = (p1 - p_1) / (2 * h);             // first derivative
             glm::vec2 d2 = (p1 - 2.0f * p0 + p_1) / (h * h); // second derivative
 
             glm::vec2 diff = p0 - point;
@@ -458,7 +459,7 @@ struct Curve : GameObject
             float f_prime = glm::dot(d2, diff) + glm::dot(d1, d1);
 
             if (fabs(f_prime) < 1e-6f)
-            break;
+                break;
 
             float t_new = t - f / f_prime;
             t = glm::clamp(t_new, 0.0f, 1.0f);
@@ -494,7 +495,7 @@ void SphereCollider::physics_process(float delta)
     screen_pos2.x /= gl::window_width_in_screen_coordinates();
     screen_pos2.y /= gl::window_height_in_screen_coordinates();
 
-    utils::draw_line(screen_pos2, screen_pos, 0.01f, glm::vec4(0, 1, 0, 1));
+    // utils::draw_line(screen_pos2, screen_pos, 0.01f, glm::vec4(0, 1, 0, 1));
 
     //
     if (old_to_new_vec.x == 0 && old_to_new_vec.y == 0)
@@ -569,6 +570,10 @@ glm::vec2 _bezier2(glm::vec2 vec1, glm::vec2 vec2, glm::vec2 vec3, float t)
 
 struct ParticleSpawner : GameObject
 {
+    virtual void start() override
+    {
+        init_spawn();
+    }
 
     virtual void physics_process(float delta) override
     {
@@ -583,39 +588,33 @@ struct ParticleSpawner : GameObject
         }
     }
 
-    virtual void start() override
-    {
-        
-        init_spawn();
-    }
-
     void init_spawn()
     {
 
         new_objects.push_back(new Curve([](float t) -> glm::vec2
-                                        { return glm::vec2(cos(t * 3.14f * 2.f), sin(t * 3.14f * 2.f)) * 0.5f; }));
+                                        { return glm::vec2(cos(t * 3.14f * 2.f), sin(t * 3.14f * 2.f)) * 0.5f; }, -100.f, 100.f));
+
+        // new_objects.push_back(new Curve([](float t) -> glm::vec2
+        //                                 { return _bezier1(glm::vec2(1.f, 1.f), gl::mouse_position(), glm::vec2(-1.f, -1.f), t); }));
 
         new_objects.push_back(new Curve([](float t) -> glm::vec2
-                                        { return _bezier1(glm::vec2(1.f, 1.f), gl::mouse_position(), glm::vec2(-1.f, -1.f), t); }));
-
-        new_objects.push_back(new Curve([](float t) -> glm::vec2
-                                        { return _bezier2(glm::vec2(1.f, 1.f), gl::mouse_position(), glm::vec2(-1.f, -1.f), t); }));
+                                        { return _bezier2(glm::vec2(1.f, 1.f), gl::mouse_position(), glm::vec2(-1.f, -1.f), t); }, -10000.f, 100.f));
 
         spawn();
     }
 
     void spawn()
     {
-        std::vector<GameObject *> new_particles = spread_particles_along_parametric_curve(100.f, [](float t) -> glm::vec2
+        std::vector<GameObject *> new_particles = spread_particles_along_parametric_curve(50.f, [](float t) -> glm::vec2
                                                                                           { return glm::vec2(cos(t * 3.14f * 2.f), sin(t * 3.14f * 2.f)) * 0.5f; });
 
         new_objects.insert(new_objects.end(), new_particles.begin(), new_particles.end());
 
-        new_particles = spread_particles_along_parametric_curve(100.f, [](float t) -> glm::vec2
+        new_particles = spread_particles_along_parametric_curve(50.f, [](float t) -> glm::vec2
                                                                 { return _bezier1(glm::vec2(1.f, 1.f), gl::mouse_position(), glm::vec2(-1.f, -1.f), t); });
         new_objects.insert(new_objects.end(), new_particles.begin(), new_particles.end());
 
-        new_particles = spread_particles_along_parametric_curve(100.f, [](float t) -> glm::vec2
+        new_particles = spread_particles_along_parametric_curve(50.f, [](float t) -> glm::vec2
                                                                 { return _bezier2(glm::vec2(1.f, 1.f), gl::mouse_position(), glm::vec2(-1.f, -1.f), t); });
         new_objects.insert(new_objects.end(), new_particles.begin(), new_particles.end());
 
@@ -670,12 +669,17 @@ int main()
 
         if (new_objects.size() > 0)
         {
+            std::vector<GameObject *> it = new_objects;
             for (GameObject *obj : new_objects)
             {
                 objects.push_back(obj);
-                obj->_go_start();
             }
             new_objects.clear();
+
+            for (GameObject *obj : it)
+            {
+                obj->_go_start(); // prevents issues where objects could not be created in the start function
+            }
         }
 
         // Garbage collection
