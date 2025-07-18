@@ -46,7 +46,7 @@ std::vector<GameObject *> objects = std::vector<GameObject *>();
 std::vector<GameObject *> new_objects = std::vector<GameObject *>();
 struct GameObjectComponent
 {
-    GameObject *object;
+    GameObject *object = nullptr;
 
     virtual void start()
     {
@@ -73,6 +73,17 @@ struct GameObject
     float rotation = 0.f;
 
     std::vector<GameObjectComponent *> components = std::vector<GameObjectComponent *>();
+
+    virtual ~GameObject()
+    {
+        for (GameObjectComponent *component : components)
+        {
+            if (component == nullptr)
+                continue;
+            delete component;
+        }
+    }
+
     void _go_start()
     {
         start();
@@ -251,11 +262,12 @@ struct ParametricFunctionRenderer : GameObjectComponent
     float end = 1.f;
     int steps = 100;
     glm::vec4 start_color = glm::vec4(1, 1, 1, 1);
-    glm::vec4 end_color = glm::vec4(1, 0, 0, 1);
+    glm::vec4 end_color = glm::vec4(1, 1, 1, 1);
 
     virtual void physics_process(float delta) override
     {
     }
+
     virtual void render() override
     {
         for (int i = 0; i < steps; i++)
@@ -304,28 +316,35 @@ struct Particle : GameObject
     float life_time = -1.f;
     float age = 0.f;
 
-    RigidBody *rb = new RigidBody();
-    SphereRenderer *rend = new SphereRenderer();
-    SphereCollider *collider = new SphereCollider();
+    RigidBody *rb = nullptr;
+    SphereRenderer *rend = nullptr;
+    SphereCollider *collider = nullptr;
+
+    Particle()
+    {
+        rb = new RigidBody();
+        rb->object = this;
+        components.push_back(rb);
+
+        rend = new SphereRenderer();
+        rend->object = this;
+        components.push_back(rend);
+
+        collider = new SphereCollider();
+        collider->object = this;
+        components.push_back(collider);
+    }
 
     virtual void start() override
     {
-        GameObject::start();
-        rb->object = this;
-        rend->object = this;
-        collider->object = this;
-
-        components.push_back(rb);
-        components.push_back(rend);
-        components.push_back(collider);
 
         start_size = 3.f;
-        end_size = 100.f;
-        start_color = glm::vec4(0.f, 0.f, 0.f, 1.f);
-        end_color = glm::vec4(1.f, 0.f, 0.f, 0.f);
+        end_size = 10.f;
+        start_color = glm::vec4(0.f, 0.f, 0.f, 0.f);
+        end_color = glm::vec4(1.f, 0.f, 0.f, 0.5f);
         rb->mass = 1000.f;
         // rb->add_force(random_point_in_circle(1000000.f));
-        life_time = utils::rand(0, 1);
+        life_time = utils::rand(0, 60 * (1- deltaTime));
     }
 
     virtual void physics_process(float delta) override
@@ -337,7 +356,7 @@ struct Particle : GameObject
 
         if (life_time < 0)
         {
-            markedForGarbageCollection = true;
+
             return;
         }
 
@@ -346,6 +365,7 @@ struct Particle : GameObject
         {
             size = end_size; // DELETE
             rend->color = end_color;
+            markedForGarbageCollection = true;
         }
         else
         {
@@ -358,37 +378,100 @@ struct Particle : GameObject
                 lerp(start_color.w, end_color.w, coef));
         }
     }
-
-    ~Particle()
-    {
-        delete rb;
-        delete rend;
-        delete collider;
-    }
 };
 
 struct Curve : GameObject
 {
     std::function<glm::vec2(float)> function;
     ParametricFunctionRenderer *renderer;
+    float attraction_radius = 0.1f;
+    float attraction_strength = 1000.f;
 
     Curve(std::function<glm::vec2(float)> func)
     {
         function = func;
         renderer = new ParametricFunctionRenderer(this, function);
+        renderer->object = this;
         components.push_back(renderer);
     }
 
     virtual void start() override
     {
-        GameObject::start();
         position = glm::vec2(0, 0);
+    }
+
+    virtual void physics_process(float delta) override
+    {
+        // if a particule is close to the curve, it should be attracted to it
+
+        for (GameObject *particle : objects)
+        {
+            //cast to Particle
+            Particle *p = dynamic_cast<Particle *>(particle);
+
+            if (p == nullptr)
+                continue;
+            glm::vec2 pos = get_closest_point_on_curve(p->position);
+            if (glm::distance(p->position, pos) < attraction_radius)
+            {
+                glm::vec2 direction = glm::normalize(pos - p->position);
+                p->rb->add_force(direction * attraction_strength);
+            }
+        }
+    }
+
+    glm::vec2 get_closest_point_on_curve(glm::vec2 point)
+    {
+        float closest_t = 0.f;
+        float closest_distance = std::numeric_limits<float>::max();
+
+        // Use Newton's method to find the closest point on the curve
+        // Initial guess: brute force to find a good starting t
+        for (int i = 0; i < 100; i++)
+        {
+            float t = i / 100.f;
+            glm::vec2 curve_point = function(t);
+            float distance = glm::distance(point, curve_point);
+
+            if (distance < closest_distance)
+            {
+            closest_distance = distance;
+            closest_t = t;
+            }
+        }
+
+        // Refine with Newton's method
+        float t = closest_t;
+        for (int iter = 0; iter < 10; ++iter)
+        {
+            // Numerical derivatives
+            float h = 1e-4f;
+            glm::vec2 p0 = function(t);
+            glm::vec2 p1 = function(t + h);
+            glm::vec2 p_1 = function(t - h);
+
+            glm::vec2 d1 = (p1 - p_1) / (2 * h); // first derivative
+            glm::vec2 d2 = (p1 - 2.0f * p0 + p_1) / (h * h); // second derivative
+
+            glm::vec2 diff = p0 - point;
+            float f = glm::dot(d1, diff);
+            float f_prime = glm::dot(d2, diff) + glm::dot(d1, d1);
+
+            if (fabs(f_prime) < 1e-6f)
+            break;
+
+            float t_new = t - f / f_prime;
+            t = glm::clamp(t_new, 0.0f, 1.0f);
+        }
+        closest_t = t;
+
+        return function(closest_t);
     }
 
     virtual void render() override
     {
         // position = lerp(glm::vec2(-1, -1), glm::vec2(1, 1), sin(currentTime));
-        renderer->steps = lerp(0, 1000, currentTime / 100);
+        renderer->steps = lerp(0, 1000, currentTime);
 
         if (renderer->steps > 1000)
             renderer->steps = 1000;
@@ -502,7 +585,7 @@ struct ParticleSpawner : GameObject
 
     virtual void start() override
     {
-        GameObject::start();
+        
         init_spawn();
     }
 
@@ -513,10 +596,10 @@ struct ParticleSpawner : GameObject
                                         { return glm::vec2(cos(t * 3.14f * 2.f), sin(t * 3.14f * 2.f)) * 0.5f; }));
 
         new_objects.push_back(new Curve([](float t) -> glm::vec2
-                                        { return _bezier1(glm::vec2(1.f, 1.f), glm::vec2(1.f, 0.f), glm::vec2(-1.f, -1.f), t); }));
+                                        { return _bezier1(glm::vec2(1.f, 1.f), gl::mouse_position(), glm::vec2(-1.f, -1.f), t); }));
 
         new_objects.push_back(new Curve([](float t) -> glm::vec2
-                                        { return _bezier2(glm::vec2(1.f, 1.f), glm::vec2(1.f, 0.f), glm::vec2(-1.f, -1.f), t); }));
+                                        { return _bezier2(glm::vec2(1.f, 1.f), gl::mouse_position(), glm::vec2(-1.f, -1.f), t); }));
 
         spawn();
     }
@@ -529,11 +612,11 @@ struct ParticleSpawner : GameObject
         new_objects.insert(new_objects.end(), new_particles.begin(), new_particles.end());
 
         new_particles = spread_particles_along_parametric_curve(100.f, [](float t) -> glm::vec2
-                                                                { return _bezier1(glm::vec2(1.f, 1.f), glm::vec2(1.f, 0.f), glm::vec2(-1.f, -1.f), t); });
+                                                                { return _bezier1(glm::vec2(1.f, 1.f), gl::mouse_position(), glm::vec2(-1.f, -1.f), t); });
         new_objects.insert(new_objects.end(), new_particles.begin(), new_particles.end());
 
         new_particles = spread_particles_along_parametric_curve(100.f, [](float t) -> glm::vec2
-                                                                { return _bezier2(glm::vec2(1.f, 1.f), glm::vec2(1.f, 0.f), glm::vec2(-1.f, -1.f), t); });
+                                                                { return _bezier2(glm::vec2(1.f, 1.f), gl::mouse_position(), glm::vec2(-1.f, -1.f), t); });
         new_objects.insert(new_objects.end(), new_particles.begin(), new_particles.end());
 
         toLog += std::to_string(objects.size());
@@ -547,14 +630,7 @@ int main()
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 
-    // TODO: create an array of particles
-
-    objects.push_back(new ParticleSpawner());
-
-    for (GameObject *particle : objects)
-    {
-        particle->_go_start();
-    }
+    new_objects.push_back(new ParticleSpawner());
 
     while (gl::window_is_open())
     {
@@ -568,14 +644,14 @@ int main()
         {
             if (particle == nullptr)
                 continue;
-            particle->_go_physics_process(gl::delta_time_in_seconds());
+            particle->_go_physics_process(deltaTime);
         }
 
         for (GameObject *particle : objects)
         {
             if (particle == nullptr)
                 continue;
-            particle->_go_late_physics_process(gl::delta_time_in_seconds());
+            particle->_go_late_physics_process(deltaTime);
         }
 
         for (GameObject *particle : objects)
@@ -602,15 +678,27 @@ int main()
             new_objects.clear();
         }
 
-        objects.erase(std::remove_if(begin(objects), end(objects), [](GameObject *obj)
-                                     {
-            if (obj->markedForGarbageCollection){
-                delete obj;
-                return true;
-            }
-            return false;
-        }),
-                      end(objects));
+        // Garbage collection
+        objects.erase(
+            std::remove_if(objects.begin(), objects.end(),
+                           [](GameObject *&obj)
+                           {
+                               if (obj == nullptr)
+                                   return true;
+                               if (obj->markedForGarbageCollection)
+                               {
+                                   delete obj;
+                                   obj = nullptr;
+                                   return true;
+                               }
+                               return false;
+                           }),
+            objects.end());
+
+        if (objects.capacity() > objects.size())
+        {
+            objects.shrink_to_fit();
+        }
 
         previousTime = currentTime;
     }
