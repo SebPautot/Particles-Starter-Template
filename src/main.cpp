@@ -4,6 +4,9 @@
 #include "iostream"
 
 std::string toLog = "";
+float previousTime = 0.f;
+float deltaTime = 0.f;
+float currentTime = 0.f;
 
 glm::vec2 random_point_in_vector(glm::vec2 bounds)
 {
@@ -17,8 +20,30 @@ glm::vec2 random_point_in_circle(float radius = 1.f)
     return glm::vec2(cos(angle), sin(angle)) * length;
 }
 
+float lerp(float start, float end, float t)
+{
+    return (end - start) * t + start;
+}
+
+glm::vec2 lerp(glm::vec2 start, glm::vec2 end, float t)
+{
+    return (end - start) * t + start;
+}
+
+glm::vec3 lerp(glm::vec3 start, glm::vec3 end, float t)
+{
+    return (end - start) * t + start;
+}
+
+glm::vec4 lerp(glm::vec4 start, glm::vec4 end, float t)
+{
+    return (end - start) * t + start;
+}
+
 struct GameObject;
 
+std::vector<GameObject *> objects = std::vector<GameObject *>();
+std::vector<GameObject *> new_objects = std::vector<GameObject *>();
 struct GameObjectComponent
 {
     GameObject *object;
@@ -42,6 +67,7 @@ struct GameObjectComponent
 
 struct GameObject
 {
+    bool markedForGarbageCollection = false;
     glm::vec2 position = glm::vec2(0, 0);
     float size = 1.f;
     float rotation = 0.f;
@@ -53,6 +79,8 @@ struct GameObject
 
         for (GameObjectComponent *component : components)
         {
+            if (component == nullptr)
+                continue;
             component->start();
         }
     }
@@ -67,6 +95,8 @@ struct GameObject
 
         for (GameObjectComponent *component : components)
         {
+            if (component == nullptr)
+                continue;
             component->physics_process(delta);
         }
     }
@@ -81,6 +111,8 @@ struct GameObject
 
         for (GameObjectComponent *component : components)
         {
+            if (component == nullptr)
+                continue;
             component->late_physics_process(delta);
         }
     }
@@ -95,6 +127,8 @@ struct GameObject
 
         for (GameObjectComponent *component : components)
         {
+            if (component == nullptr)
+                continue;
             component->render();
         }
     }
@@ -204,6 +238,42 @@ struct SphereRenderer : GameObjectComponent
     }
 };
 
+struct ParametricFunctionRenderer : GameObjectComponent
+{
+    ParametricFunctionRenderer(GameObject *obj, std::function<glm::vec2(float)> func)
+    {
+        object = obj;
+        function = func;
+    }
+
+    std::function<glm::vec2(float)> function;
+    float start = 0.f;
+    float end = 1.f;
+    int steps = 100;
+    glm::vec4 start_color = glm::vec4(1, 1, 1, 1);
+    glm::vec4 end_color = glm::vec4(1, 0, 0, 1);
+
+    virtual void physics_process(float delta) override
+    {
+    }
+    virtual void render() override
+    {
+        for (int i = 0; i < steps; i++)
+        {
+            float t = lerp(start, end, i / (float)(steps - 1));
+            float t_next = lerp(start, end, (i + 1) / (float)(steps - 1));
+            glm::vec2 point = function(t);
+            point += object->position;
+            glm::vec2 point_next = function(t_next);
+            point_next += object->position;
+            utils::draw_line(
+                point,
+                point_next,
+                0.01f, lerp(start_color, end_color, t));
+        }
+    }
+};
+
 struct Particle; // Forward declaration
 
 struct SphereCollider : GameObjectComponent
@@ -249,16 +319,13 @@ struct Particle : GameObject
         components.push_back(rend);
         components.push_back(collider);
 
-        // position = random_point_in_vector(glm::vec2(2.f, 2.f)) - glm::vec2(1.f, 1.f);
-        // position.x = position.x * (gl::window_width_in_screen_coordinates());
-        // position.y = position.y * (gl::window_height_in_screen_coordinates());
         start_size = 3.f;
-        end_size = 0.f;
-        start_color = glm::vec4(1.f, 1.f, 1.f, 1.f);
-        end_color = glm::vec4(1.f, 1.f, 1.f, 0.5f);
+        end_size = 100.f;
+        start_color = glm::vec4(0.f, 0.f, 0.f, 1.f);
+        end_color = glm::vec4(1.f, 0.f, 0.f, 0.f);
         rb->mass = 1000.f;
         // rb->add_force(random_point_in_circle(1000000.f));
-        life_time = utils::rand(0, 10);
+        life_time = utils::rand(0, 1);
     }
 
     virtual void physics_process(float delta) override
@@ -270,6 +337,7 @@ struct Particle : GameObject
 
         if (life_time < 0)
         {
+            markedForGarbageCollection = true;
             return;
         }
 
@@ -291,9 +359,39 @@ struct Particle : GameObject
         }
     }
 
-    float lerp(float start, float end, float t)
+    ~Particle()
     {
-        return (end - start) * t + start;
+        delete rb;
+        delete rend;
+        delete collider;
+    }
+};
+
+struct Curve : GameObject
+{
+    std::function<glm::vec2(float)> function;
+    ParametricFunctionRenderer *renderer;
+
+    Curve(std::function<glm::vec2(float)> func)
+    {
+        function = func;
+        renderer = new ParametricFunctionRenderer(this, function);
+        components.push_back(renderer);
+    }
+
+    virtual void start() override
+    {
+        GameObject::start();
+        position = glm::vec2(0, 0);
+    }
+
+    virtual void render() override
+    {
+        // position = lerp(glm::vec2(-1, -1), glm::vec2(1, 1), sin(currentTime));
+        renderer->steps = lerp(0, 1000, currentTime / 100);
+
+        if (renderer->steps > 1000)
+            renderer->steps = 1000;
     }
 };
 
@@ -334,17 +432,17 @@ void SphereCollider::physics_process(float delta)
     previous_pos = object->position;
 }
 
-std::vector<Particle*> spread_particles(float width, float radius)
+std::vector<GameObject *> spread_particles(float width, float radius)
 {
-    std::vector<Particle*> particles;
+    std::vector<GameObject *> particles;
     float sadius = radius / sqrt(2);
-    
+
     for (float x = 0; x <= width; x += 2 * radius)
     {
         for (float y = 0; y <= width; y += 2 * radius)
         {
             Particle *p = new Particle();
-            p->position = random_point_in_circle(radius-sadius) + glm::vec2(x - width/2,y - width/2);
+            p->position = random_point_in_circle(radius - sadius) + glm::vec2(x - width / 2, y - width / 2);
             p->size = 0.001f;
             particles.push_back(p);
         }
@@ -352,6 +450,95 @@ std::vector<Particle*> spread_particles(float width, float radius)
 
     return particles;
 }
+
+std::vector<GameObject *> spread_particles_along_parametric_curve(float steps, std::function<glm::vec2(float)> func)
+{
+    std::vector<GameObject *> particles;
+    for (int i = 0; i < steps; i++)
+    {
+        Particle *p = new Particle();
+        float t = lerp(0, 1, i / (float)(steps - 1));
+        p->position = func(t) * 1000.f;
+
+        float t_next = lerp(0, 1, (i + 1) / (float)(steps - 1));
+        glm::vec2 force = func(t_next) * 1000.f - p->position;
+        p->rb->add_force(glm::vec2(-1.f * force.y, force.x));
+
+        particles.push_back(p);
+    }
+
+    return particles;
+}
+
+glm::vec2 _bezier1(glm::vec2 vec1, glm::vec2 vec2, glm::vec2 vec3, float t)
+{
+    glm::vec2 v1tov2 = lerp(vec1, vec2, t);
+
+    return lerp(lerp(glm::vec2(0, 0), vec1, t), v1tov2, t) + lerp(v1tov2, lerp(vec2, vec3, t), t);
+}
+
+glm::vec2 _bezier2(glm::vec2 vec1, glm::vec2 vec2, glm::vec2 vec3, float t)
+{
+    float t_one_minus = 1 - t;
+
+    return t_one_minus * t_one_minus * vec1 + 2 * t * t_one_minus * vec2 + t * t * vec3;
+}
+
+struct ParticleSpawner : GameObject
+{
+
+    virtual void physics_process(float delta) override
+    {
+        // Spawn particles at a fixed rate
+        static float time_since_last_spawn = 0.f;
+        time_since_last_spawn += delta;
+
+        if (time_since_last_spawn > 0.1f) // Spawn every 0.1 seconds
+        {
+            spawn();
+            time_since_last_spawn = 0.f;
+        }
+    }
+
+    virtual void start() override
+    {
+        GameObject::start();
+        init_spawn();
+    }
+
+    void init_spawn()
+    {
+
+        new_objects.push_back(new Curve([](float t) -> glm::vec2
+                                        { return glm::vec2(cos(t * 3.14f * 2.f), sin(t * 3.14f * 2.f)) * 0.5f; }));
+
+        new_objects.push_back(new Curve([](float t) -> glm::vec2
+                                        { return _bezier1(glm::vec2(1.f, 1.f), glm::vec2(1.f, 0.f), glm::vec2(-1.f, -1.f), t); }));
+
+        new_objects.push_back(new Curve([](float t) -> glm::vec2
+                                        { return _bezier2(glm::vec2(1.f, 1.f), glm::vec2(1.f, 0.f), glm::vec2(-1.f, -1.f), t); }));
+
+        spawn();
+    }
+
+    void spawn()
+    {
+        std::vector<GameObject *> new_particles = spread_particles_along_parametric_curve(100.f, [](float t) -> glm::vec2
+                                                                                          { return glm::vec2(cos(t * 3.14f * 2.f), sin(t * 3.14f * 2.f)) * 0.5f; });
+
+        new_objects.insert(new_objects.end(), new_particles.begin(), new_particles.end());
+
+        new_particles = spread_particles_along_parametric_curve(100.f, [](float t) -> glm::vec2
+                                                                { return _bezier1(glm::vec2(1.f, 1.f), glm::vec2(1.f, 0.f), glm::vec2(-1.f, -1.f), t); });
+        new_objects.insert(new_objects.end(), new_particles.begin(), new_particles.end());
+
+        new_particles = spread_particles_along_parametric_curve(100.f, [](float t) -> glm::vec2
+                                                                { return _bezier2(glm::vec2(1.f, 1.f), glm::vec2(1.f, 0.f), glm::vec2(-1.f, -1.f), t); });
+        new_objects.insert(new_objects.end(), new_particles.begin(), new_particles.end());
+
+        toLog += std::to_string(objects.size());
+    }
+};
 
 int main()
 {
@@ -361,37 +548,70 @@ int main()
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 
     // TODO: create an array of particles
-    std::vector<Particle*> particles = spread_particles(1000.f, 5.f);
 
-    for (Particle* particle : particles)
+    objects.push_back(new ParticleSpawner());
+
+    for (GameObject *particle : objects)
     {
         particle->_go_start();
     }
 
     while (gl::window_is_open())
     {
+        currentTime = gl::time_in_seconds();
+        deltaTime = currentTime - previousTime;
+
         glClearColor(0.f, 0.f, 0.f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        for (Particle* particle : particles)
+        for (GameObject *particle : objects)
         {
+            if (particle == nullptr)
+                continue;
             particle->_go_physics_process(gl::delta_time_in_seconds());
         }
 
-        for (Particle* particle : particles)
+        for (GameObject *particle : objects)
         {
+            if (particle == nullptr)
+                continue;
             particle->_go_late_physics_process(gl::delta_time_in_seconds());
         }
 
-        for (Particle* particle : particles)
+        for (GameObject *particle : objects)
         {
+            if (particle == nullptr)
+                continue;
             particle->_go_render();
         }
 
         if (toLog != "")
         {
-            std::cout << toLog;
+            // log to console
+            std::cout << toLog << std::endl;
             toLog = "";
         }
+
+        if (new_objects.size() > 0)
+        {
+            for (GameObject *obj : new_objects)
+            {
+                objects.push_back(obj);
+                obj->_go_start();
+            }
+            new_objects.clear();
+        }
+
+        objects.erase(std::remove_if(begin(objects), end(objects), [](GameObject *obj)
+                                     {
+            if (obj->markedForGarbageCollection){
+                delete obj;
+                return true;
+            }
+            return false;
+        }),
+                      end(objects));
+
+        previousTime = currentTime;
     }
 }
